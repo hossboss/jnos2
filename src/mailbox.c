@@ -444,7 +444,16 @@ int mfa_validation  (struct mbx *m)
 		if (m->IPemail == NULLCHAR)
 		{
 			logmbox (m->user, m->name, "not MFA registered");
-			return 0;
+
+			/*
+			 * 19Dec2020, Maiko (VE4KLM), Instead of kicking the user out, we
+			 * should give them the option to REGISTER don't you think ? Most
+			 * of these won't even be in ftpusers, so minimum permissions are
+			 * in affect (univperm) for these types of logins anyways, really
+			 * should not be a big deal, right ? So return 1, instead of 0 ?
+			 */
+			tprintf ("\nThis is an MFA enabled system - please consider registering.\n\n");
+			return 1;
 		}
 
 		/* 18Nov2020, Generate Auth Code using Random Numbers */
@@ -471,7 +480,14 @@ int mfa_validation  (struct mbx *m)
 
 		free (msgcmd);	/* make sure to free up the command buffer */
 
-		/* tprintf ("\nTest Code [%s] Email Address [%s]", authcode, m->IPemail); */
+		/* tprintf ("\nTesting Code [%s] Email [%s]", authcode, m->IPemail); */
+ 	
+		/*
+		 * 21Dec2020, Maiko, Oops, we need to kick smtp queue, or the user
+		 * might be waiting a long time to get their email, the queue only
+		 * gets kicked during an FBB forwarding session, so better do it !
+		 */
+		smtptick (NULL);
 
 		tprintf ("\nAuth (check your mail): ");
 	}
