@@ -330,15 +330,20 @@ int dosid (int argc, char **argv, void *p)
 	capture_sid (m, argv[1]);
 #endif
 
+#ifndef	J2_DONT_ENFORCE_BBS_USER	/* 24Dec2020, Maiko, for Red (PE1RRR) */
+
 	/*
-	 * 27Oct2020, Maiko (VE4KLM), After seeing some mods from Brian (N1URO), I think
-	 * the better approach is that if we see an incoming SID AND the user hasn't been
-	 * configured as a BBS in our ftpusers, then we should just disconnect 'now' ...
+	 * 27Oct2020, Maiko (VE4KLM), After seeing some mods from Brian (N1URO), I
+	 * think the better approach is that if we see an incoming SID AND the user
+	 * hasn't been configured as a BBS in our ftpusers, then we should just do
+	 * the disconnect 'now' ...
 	 *
-	 * There is no security really to prevent a rogue connect from manually entering
-	 * a SID when they connect and forward malicious content ! Even an ignorant user
-	 * attempting to do a forward because they may not know any better, is something
-	 * we should protect against. Anyone you forward with 'should' be configured.
+	 * There really is no security to prevent a rogue connect from manually
+	 * entering a SID when they connect and forward malicious content ! Even
+	 * an ignorant user attempting to do a forward because they may not know
+	 * any better, is something we should protect against.
+	 *
+	 * Anyone you forward with 'should' be configured.
 	 *
 	 * We don't care if we initiate the forward, privs will always be 0 then.
 	 *
@@ -352,6 +357,8 @@ int dosid (int argc, char **argv, void *p)
 
 		return 1;
 	}
+
+#endif	/* J2_DONT_ENFORCE_BBS_USER	*/
 
 	/* kludge to help handle the space in the author_id part of sid
 	 * 13Apr2010, Maiko, trying to forward with RMS Express
