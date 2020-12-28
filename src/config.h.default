@@ -9,6 +9,12 @@
  */
 
 /*
+ * Definitions introduced with JNOS 2.0m.5F
+ */
+
+#undef J2_DONT_ENFORCE_BBS_USER		/* define if this gives you a headache */
+
+/*
  * Definitions introduced with JNOS 2.0m.5E
  */
 
