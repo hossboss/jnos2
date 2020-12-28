@@ -114,7 +114,7 @@ int winrpr_send (struct iface *iface, struct mbuf *bp)
 			free (iobuf);
 
 		iomtu = iface->mtu;
-		iobuf = mallocw (iomtu);
+		iobuf = mallocw (iomtu + 3);	/* fend and ctrl as well */
 	}
 
 	if (psock != -1)	/* tcp/ip socket handle */
@@ -138,7 +138,24 @@ int winrpr_send (struct iface *iface, struct mbuf *bp)
 
 			pullup (&tbp, ptr, len);
 
-			if (j2send (psock, iobuf, len + 2, 0) < 1)
+			ptr += len;
+ 		
+			/*
+			 * 28Dec2020, Maiko, I am an idiot ! This explains the
+			 * inconsistent transmit behaviour I've been seeing for
+			 * the past couple month - completely forgot about the
+			 * trailing FEND, and now it's consistent, finally got
+			 * my PTT (rts) working as well, sorry folks ...
+			 *
+			 * Also, originally though KISS ctrl codes would be
+			 * handled since I thought I was using SLIP routines,
+			 * but no, so expect a bit of a rewrite 'soon', binary
+			 * data may not work very well, just a heads up :]
+			 */
+
+			*ptr++ = 0xc0;	/* trailing FEND */
+
+			if (j2send (psock, iobuf, len + 3, 0) < 1)
 				log (-1, "winrpr_send - write errno %d", errno);
 
 			free_p (tbp);
