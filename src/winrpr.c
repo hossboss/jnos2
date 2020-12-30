@@ -105,7 +105,6 @@ int winrpr_send (struct iface *iface, struct mbuf *bp)
 	static char *iobuf = NULL;
 	static int iomtu = -1;
 	struct mbuf *tbp;
-	char *ptr;
 	int len;
 
 	if (iomtu == -1 || iface->mtu > iomtu)
@@ -114,14 +113,12 @@ int winrpr_send (struct iface *iface, struct mbuf *bp)
 			free (iobuf);
 
 		iomtu = iface->mtu;
-		iobuf = mallocw (iomtu + 3);	/* fend and ctrl as well */
+		iobuf = mallocw (iomtu);
 	}
 
 	if (psock != -1)	/* tcp/ip socket handle */
 	{
 		len = len_p (bp);
-
-		ptr = iobuf;
 
 		/* this should never happen, but just to be safe !!! */
 		if (len > iomtu)
@@ -132,30 +129,9 @@ int winrpr_send (struct iface *iface, struct mbuf *bp)
 
 		else
 		{
-			*ptr++ = 0xc0;	/* 10Nov2020, from the KISS TNC Spec */
+			pullup (&tbp, iobuf, len);
 
-			*ptr++ = 0x00;	/* sending out data on port 0 */
-
-			pullup (&tbp, ptr, len);
-
-			ptr += len;
- 		
-			/*
-			 * 28Dec2020, Maiko, I am an idiot ! This explains the
-			 * inconsistent transmit behaviour I've been seeing for
-			 * the past couple month - completely forgot about the
-			 * trailing FEND, and now it's consistent, finally got
-			 * my PTT (rts) working as well, sorry folks ...
-			 *
-			 * Also, originally though KISS ctrl codes would be
-			 * handled since I thought I was using SLIP routines,
-			 * but no, so expect a bit of a rewrite 'soon', binary
-			 * data may not work very well, just a heads up :]
-			 */
-
-			*ptr++ = 0xc0;	/* trailing FEND */
-
-			if (j2send (psock, iobuf, len + 3, 0) < 1)
+			if (j2send (psock, iobuf, len, 0) < 1)
 				log (-1, "winrpr_send - write errno %d", errno);
 
 			free_p (tbp);
@@ -167,26 +143,68 @@ int winrpr_send (struct iface *iface, struct mbuf *bp)
     return 0;
 }
 
+/*
+ * 29Dec2020, Maiko (VE4KLM), I should be using the slip encode and decode
+ * functions, just like I had done for my multipsk driver why back when. I
+ * am not sure why I thought I didn't need them for this driver ? It would
+ * seem my mind has been a bit cloudy lately ... it's been a shitty year!
+ *
+ * The year of COVID, and an unexpected 'long term' family illness :|
+ *
+ * The slip functions take care of translation of FEND and other control
+ * characters in the data stream, and this most certainly explains why my
+ * attempts to do connected mode are failing. The packets are definitely
+ * going out HF, but nobody is replying, and they should be considering
+ * propagation has been decent on 30 meters this past while ...
+ *
+ * Will have to wait till tomorrow to test this, my window of opportunity
+ * to hit the west coast stations has gone by for today - 0120 UTC now.
+ *
+ * 30Dec2020, Maiko (VE4KLM) - confirmed working (I am a happy man) :
+ *
+ * Connected to KO0OOO-7 early this morning on 30 meters, got a BPQ prompt,
+ * typed in HELP, lots of reading made for a good test, this was flawless,
+ * so FINALLY it is done, get this copy to rsync asap and let people know.
+ *
+ * Winnipeg to Nevada, 1300 UTC, 30 meters, 20 watts, sloper dipole :]
+ *
+ */
 int winrpr_raw (struct iface *iface, struct mbuf *bp)
 {
-	dump (iface, IF_TRACE_OUT, CL_AX25, bp);
+    struct mbuf *bp2, *bp3;
+
+    struct slip *sp = &Slip[iface->xdev];
+
+    bp2 = pushdown (bp, 1);
+    bp2->data[0] = PARAM_DATA;
+
+    dump (iface, IF_TRACE_OUT, sp->type, bp);
 
     iface->rawsndcnt++;
     iface->lastsent = secclock();
-  
-	winrpr_send (iface, bp);
+
+    if ((bp3 = slip_encode (bp2, sp->usecrc)) == NULLBUF)
+        return -1;
+
+    winrpr_send (iface, bp3);
 
     return 0;
 }
 
+/* 29Dec2020, Maiko (VE4KLM), Should be using the slip functions !!!!! */
+
 void winrpr_rx (int xdev, void *p1, void *p2)
 {
 	struct iface *ifp = (struct iface*)p1;
+
 	IFPAGWPE *ifpp = (IFPAGWPE*)p2;
-    struct sockaddr_in from;
+
+	struct slip *sp;
+	int c;
+
     struct mbuf *bp;
-	char tmp[AXBUF];
-	int fromlen;
+
+    sp = &Slip[ifp->xdev];
 
 	log (-1, "winrpr listener [%s:%d]", ifpp->hostname, ifpp->portnum);
 
@@ -202,23 +220,21 @@ void winrpr_rx (int xdev, void *p1, void *p2)
 
 		/* Handle incoming data stream */
 
-		while (1)
+	    bp = NULL;
+		while ( (c = recvchar (psock)) != -1 )
 		{
-			// pwait (NULL);	/* give other processes a chance */
+        if ((bp = slip_decode(sp,(char)c)) == NULLBUF)
+            continue;   /* More to come */
 
-			if (recv_mbuf (psock, &bp, 0, (char*)&from, &fromlen) == -1)
-				break;
-
-			pullup (&bp, tmp, 2);	/* 10Nov2020, FEND and data frame port 0 */
-
-			/* NICE - just pass the rest of BP direct to net_route :) */
-
-			if (net_route (ifp, CL_AX25,  bp) != 0)
+			if (net_route (sp->iface, sp->type,  bp) != 0)
 			{
 				free_p (bp);
 				bp = NULL;
 			}
 		}
+
+		if (bp)
+			free_p (bp);
 
 		log (-1, "winrpr disconnected");
 		close_s (psock);
