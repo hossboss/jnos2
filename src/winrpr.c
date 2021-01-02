@@ -232,10 +232,13 @@ void winrpr_rx (int xdev, void *p1, void *p2)
 				bp = NULL;
 			}
 		}
-
+/*
+ * 01Jan2021, Maiko (VE4KLM), This most certainly causes
+ * a crash when you exit the WinRPR software, removed !
+ *
 		if (bp)
 			free_p (bp);
-
+ */
 		log (-1, "winrpr disconnected");
 		close_s (psock);
 		psock = -1;
